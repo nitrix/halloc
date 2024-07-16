@@ -1,4 +1,5 @@
 #include "halloc.h"
+#include <string.h>
 
 struct header {
     struct header *parent, *child;
@@ -11,6 +12,8 @@ struct header {
 #define USER_TO_HEADER(ptr) ((struct header *)((char *)ptr - ALIGNED_HEADER_SIZE))
 #define HEADER_TO_USER(ptr) ((void *)((char *)ptr + ALIGNED_HEADER_SIZE))
 
+size_t active_allocations = 0;
+
 static void halloc_dummy_destructor(void *ptr, void *custom) {
     (void) ptr;
     (void) custom;
@@ -21,6 +24,8 @@ void *halloc(void *parent, size_t size) {
     if (!header) {
         return NULL;
     }
+
+    active_allocations++;
 
     header->parent = NULL;
     header->child = NULL;
@@ -52,13 +57,72 @@ void *hrealloc(void *ptr, size_t size) {
         return halloc(NULL, size);
     }
 
-    struct header *header = USER_TO_HEADER(ptr);
+    struct header *old = USER_TO_HEADER(ptr);
+    
+    struct header *replacement = realloc(old, ALIGNED_HEADER_SIZE + size);
+    if (!replacement) {
+        return NULL;
+    }
 
-    // WIP
+    if (replacement == old) {
+        return ptr;
+    }
+
+    memcpy(replacement, old, ALIGNED_HEADER_SIZE);
+
+    if (old->parent) old->parent->child = replacement;
+    if (old->child) old->child->parent = replacement;
+    if (old->prev) old->prev->next = replacement;
+    if (old->next) old->next->prev = replacement;
+
+    return HEADER_TO_USER(replacement);
 }
 
-void hfree(void *ptr) {}
+void hfree(void *ptr) {
+    if (!ptr) {
+        return;
+    }
 
-void *halloc_get_parent(void *ptr) {}
-void halloc_set_parent(void *ptr, void *parent) {}
-void halloc_steal(void *ptr, void *parent) {}
+    struct header *header = USER_TO_HEADER(ptr);
+
+    if (header->next) header->next->prev = header->prev;
+    if (header->prev) header->prev->next = header->next;
+
+    if (header->parent) {
+        if (header->parent->child == header) {
+            header->parent->child = header->next;
+        }
+    }
+
+    if (header->child) {
+        header->child->parent = NULL;
+        hfree(HEADER_TO_USER(header->child));
+    }
+    
+    header->destructor(HEADER_TO_USER(ptr), header->custom);
+    free(header);
+    active_allocations--;
+}
+
+void *halloc_get_parent(void *ptr) {
+    struct header *header = USER_TO_HEADER(ptr);
+    return header->parent ? HEADER_TO_USER(header->parent) : NULL;
+}
+
+void halloc_set_destructor(void *ptr, void (*destructor)(void *, void *), void *custom) {
+    struct header *header = USER_TO_HEADER(ptr);
+    header->destructor = destructor;
+    header->custom = custom;
+}
+
+void halloc_set_parent(void *ptr, void *parent) {
+    // TODO: Implement this.
+}
+
+void halloc_steal(void *ptr, void *parent) {
+    // TODO: Implement this.
+}
+
+size_t halloc_debug_active(void) {
+    return active_allocations;
+}

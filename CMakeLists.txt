@@ -7,3 +7,5 @@ ADD_LIBRARY(halloc STATIC src/halloc.c)
 TARGET_INCLUDE_DIRECTORIES(halloc PUBLIC include)
 TARGET_COMPILE_OPTIONS(halloc PRIVATE -O3 -Wall -Wextra -std=c11 -flto)
 TARGET_LINK_OPTIONS(halloc PRIVATE -flto)
+
+ADD_SUBDIRECTORY(tests)
