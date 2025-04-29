@@ -12,9 +12,5 @@ void hfree(void *ptr);
 void halloc_set_destructor(void *ptr, void (*destructor)(void *, void *), void *custom);
 void *halloc_get_parent(void *ptr);
 void halloc_set_parent(void *ptr, void *parent);
-void halloc_steal(void *ptr, void *parent);
-
-// Debugging.
-size_t halloc_debug_active(void);
 
 #endif

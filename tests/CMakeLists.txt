@@ -1,3 +1,3 @@
-ADD_EXECUTABLE(halloc_tests main.c)
-TARGET_LINK_LIBRARIES(halloc_tests PRIVATE halloc)
-TARGET_INCLUDE_DIRECTORIES(halloc_tests PRIVATE include)
+add_executable(halloc_tests main.c)
+target_link_libraries(halloc_tests PRIVATE halloc)
+target_include_directories(halloc_tests PRIVATE include)

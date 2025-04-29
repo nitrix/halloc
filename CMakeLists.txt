@@ -1,11 +1,13 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
-PROJECT(halloc)
+cmake_minimum_required(VERSION 3.16)
+project(halloc)
 
-SET(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 11)
 
-ADD_LIBRARY(halloc STATIC src/halloc.c)
-TARGET_INCLUDE_DIRECTORIES(halloc PUBLIC include)
-TARGET_COMPILE_OPTIONS(halloc PRIVATE -O3 -Wall -Wextra -std=c11 -flto)
-TARGET_LINK_OPTIONS(halloc PRIVATE -flto)
+add_library(halloc STATIC src/halloc.c)
+target_include_directories(halloc PUBLIC include)
+target_compile_options(halloc PRIVATE -Wall -Wextra -std=c11)
+target_compile_options(halloc PRIVATE "$<$<CONFIG:DEBUG>:-O0;-g3;-ggdb3>")
+target_compile_options(halloc PRIVATE "$<$<CONFIG:RELEASE>:-O3;-flto>")
+target_link_options(halloc PRIVATE "$<$<CONFIG:RELEASE>:-flto>")
 
-ADD_SUBDIRECTORY(tests)
+add_subdirectory(tests)
