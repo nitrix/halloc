@@ -1,3 +1,4 @@
 add_executable(halloc_tests main.c)
 target_link_libraries(halloc_tests PRIVATE halloc)
-target_include_directories(halloc_tests PRIVATE include)
+
+add_test(NAME halloc_tests COMMAND halloc_tests)

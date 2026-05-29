@@ -1,5 +1,8 @@
 #include "halloc.h"
 #include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,7 +13,7 @@ struct header {
     void *custom;
 };
 
-#define ALIGNED_HEADER_SIZE (sizeof (struct { struct header h; void *data[]; }))
+#define ALIGNED_HEADER_SIZE (sizeof (struct { struct header h; max_align_t a; }))
 #define USER_TO_HEADER(ptr) ((struct header *)((char *)ptr - ALIGNED_HEADER_SIZE))
 #define HEADER_TO_USER(ptr) ((void *)((char *)ptr + ALIGNED_HEADER_SIZE))
 #define UNUSED(x) ((void)(x))
@@ -21,6 +24,10 @@ static void halloc_dummy_destructor(void *ptr, void *custom) {
 }
 
 void *halloc(void *parent, size_t size) {
+    if (size > SIZE_MAX - ALIGNED_HEADER_SIZE) {
+        return NULL;
+    }
+
     struct header *header = malloc(ALIGNED_HEADER_SIZE + size);
     if (!header) {
         return NULL;
@@ -57,6 +64,10 @@ void *hrealloc(void *ptr, size_t size) {
         return halloc(NULL, size);
     }
 
+    if (size > SIZE_MAX - ALIGNED_HEADER_SIZE) {
+        return NULL;
+    }
+
     struct header *old = USER_TO_HEADER(ptr);
 
     struct header *replacement = realloc(old, ALIGNED_HEADER_SIZE + size);
@@ -83,6 +94,8 @@ void hfree(void *ptr) {
 
     struct header *header = USER_TO_HEADER(ptr);
 
+    // Detach the subtree root from its parent and siblings so the surrounding
+    // tree stays consistent, then isolate it as a standalone root.
     if (header->parent) {
         header->parent->child = header->next;
         if (header->next) header->next->parent = header->parent;
@@ -90,25 +103,42 @@ void hfree(void *ptr) {
         if (header->prev) header->prev->next = header->next;
         if (header->next) header->next->prev = header->prev;
     }
+    header->parent = NULL;
+    header->prev = NULL;
+    header->next = NULL;
 
-    if (header->child) {
-        struct header *child = header->child;
-        while (child) {
-            struct header *saved_next = child->next;
-            if (saved_next) saved_next->prev = NULL;
-            hfree(HEADER_TO_USER(child));
-            child = saved_next;
+    // Tear the subtree down iteratively to keep teardown depth bounded by the
+    // heap rather than the call stack. Each node's destructor runs only after
+    // all of its descendants have been freed (post-order).
+    struct header *cur = header;
+    while (cur) {
+        while (cur->child) {
+            cur = cur->child;
         }
+
+        struct header *next;
+        if (cur->next) {
+            // Promote the next sibling to head, preserving the invariant that
+            // only the head of a sibling list stores the parent pointer.
+            next = cur->next;
+            next->prev = NULL;
+            cur->parent->child = next;
+            next->parent = cur->parent;
+        } else {
+            // Last child of its parent: the parent becomes a leaf next.
+            next = cur->parent;
+            if (next) next->child = NULL;
+        }
+
+        bool is_root = (cur == header);
+        cur->destructor(HEADER_TO_USER(cur), cur->custom);
+        free(cur);
+
+        if (is_root) {
+            break;
+        }
+        cur = next;
     }
-
-    header->destructor(HEADER_TO_USER(ptr), header->custom);
-
-    free(header);
-}
-
-void *halloc_get_parent(void *ptr) {
-    struct header *header = USER_TO_HEADER(ptr);
-    return header->parent ? HEADER_TO_USER(header->parent) : NULL;
 }
 
 void halloc_set_destructor(void *ptr, void (*destructor)(void *, void *), void *custom) {
